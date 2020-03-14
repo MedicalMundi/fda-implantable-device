@@ -1,0 +1,121 @@
+dist: trusty
+
+
+env:
+  global:
+
+language: php
+
+cache:
+  directories:
+  - $HOME/.composer/cache
+
+
+.steps:
+  #
+  #   CI STEP
+  #
+  - &add-composer-bin-dir-to-path |
+      export PATH="$PATH:$HOME/.composer/vendor/bin"
+
+  - &disable-xdebug-php-extension |
+      phpenv config-rm xdebug.ini || echo "xdebug not available"
+
+  - &disable-php-memory-limit |
+      echo "memory_limit=-1" >> ~/.phpenv/versions/$(phpenv version-name)/etc/conf.d/travis.ini
+
+  - &install-project-dependencies |
+      composer install --no-progress --no-suggest --ansi
+
+  - &update-project-dependencies |
+      composer update --no-progress --no-suggest --ansi
+
+  - &validate-composer |
+      composer validate --strict --ansi -vvv
+
+  - &run-phpunit-tests |
+      vendor/bin/phpunit --colors=always --coverage-clover=coverage-report.clover --log-junit=test-report.xml
+
+  - &run-phpstan-tests |
+      vendor/bin/phpstan analyse
+
+  - &run-php-psalm-check |
+      vendor/bin/psalm
+
+  - &run-code-style-check |
+      ./vendor/bin/php-cs-fixer fix --dry-run -v
+
+
+
+jobs:
+  include:
+    - name: '(PHP 7.2)'
+      php: '7.2'
+      env: RUN_SONAR_SCANNER=1
+      before_install:
+        - *disable-php-memory-limit
+      install:
+        - *install-project-dependencies
+        #- ./bin/phpunit install
+
+      before_script:
+        - *validate-composer
+      script:
+        - *run-code-style-check
+        - *run-phpstan-tests
+        - *run-phpunit-tests
+      after_success:
+        #- if [[ $RUN_SONAR_SCANNER == "1" ]]; then sonar-scanner -Dproject.settings=sonar-project.properties -Dsonar.projectVersion=$TRAVIS_TAG; fi
+
+
+    - name: '(PHP 7.3)'
+      php: '7.3'
+      before_install:
+        - *disable-xdebug-php-extension
+        - *disable-php-memory-limit
+      install:
+        - *install-project-dependencies
+        #- ./bin/phpunit install
+      before_script:
+        #- *clear-test-app-cache
+      script:
+        - *run-code-style-check
+        - *run-phpstan-tests
+        - *run-phpunit-tests
+
+
+    - name: '(PHP 7.4)'
+      php: '7.4snapshot'
+      before_install:
+        - *disable-xdebug-php-extension
+        - *disable-php-memory-limit
+      install:
+        - *install-project-dependencies
+        #- ./vendor/bin/phpunit install
+      before_script:
+        #- *clear-test-app-cache
+      script:
+        - *run-code-style-check
+        - *run-phpstan-tests
+        - *run-phpunit-tests
+
+
+    - name: '(PHP 8-nightly)'
+      php: 'nightly'
+      before_install:
+        - *disable-xdebug-php-extension
+        - *disable-php-memory-limit
+      install:
+        #- *install-project-dependencies
+        - composer update
+        - ./vendor/bin/phpunit install
+      before_script:
+        #- *clear-test-app-cache
+      script:
+        - *run-code-style-check
+        - *run-phpstan-tests
+        - *run-phpunit-tests
+
+
+  allow_failures:
+    - name: '(PHP 8-nightly)'
